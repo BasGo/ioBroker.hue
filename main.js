@@ -666,7 +666,7 @@ function createUser(ip, callback) {
         let api = new HueApi();
         api.registerUser(ip, newUserName, userDescription)
             .then(newUser => {
-                adapter.log.info('created new User: ' + newUser);
+                adapter.log.info('created new user: ' + newUser);
                 callback({error: 0, message: newUser});
             })
             .fail(err => {
@@ -706,11 +706,15 @@ function connect(cb) {
 
         let channelNames = [];
 
+        // Write config to log (in silly mode only)
+        adapter.log.silly(JSON.stringify(config));
+
         // Create/update lamps
-        adapter.log.info('creating/updating switch channels');
+        adapter.log.info('creating/updating channels and devices');
 
         let lights  = config.lights;
         let sensors = config.sensors;
+        let groups = config.groups;
         let count   = 0;
         let objs    = [];
         let states  = [];
@@ -722,10 +726,12 @@ function connect(cb) {
 
             count++;
             let sensor = sensors[sid];
+            sensor.rooms = [];
 
-            let channelName = config.config.name + '.' + sensor.name;
+            //TODO should use unique id if possible
+            let channelName = config.config.name + '.Sensors.' + sensor.name;
             if (channelNames.indexOf(channelName) !== -1) {
-                adapter.log.warn('channel "' + channelName + '" already exists, skipping lamp');
+                adapter.log.warn('skipping sensor "' + channelName + '" (already exists)');
                 continue;
             } else {
                 channelNames.push(channelName);
@@ -733,6 +739,15 @@ function connect(cb) {
             channelSWIds[channelName.replace(/\s/g, '_')] = sid;
             pollSWChannels.push(channelName.replace(/\s/g, '_'));
 
+            // get room assignments
+            for (var gid in groups)
+            {
+                let group = groups[gid];
+                if (group.sensors.includes(sid)) {
+                    sensor.rooms.push(group.name);
+                }
+            }
+            
             if (sensor.type === 'ZLLSwitch' || sensor.type === 'ZGPSwitch' || sensor.type=='Daylight' || sensor.type=='ZLLTemperature' || sensor.type=='ZLLPresence' || sensor.type=='ZLLLightLevel') {
                pollSWIds.push(count);
                pollSWOrgIds.push(sid);
@@ -822,7 +837,7 @@ function connect(cb) {
            }
         }
 
-        adapter.log.info('created/updated ' + count + ' switch channels');
+        adapter.log.info('created/updated ' + count + ' sensors');
 
         count = 0;
 
@@ -832,10 +847,11 @@ function connect(cb) {
             }
             count++;
             let light = lights[lid];
+            light.rooms = [];
 
-            let channelName = config.config.name + '.' + light.name;
+            let channelName = config.config.name + '.Lights.' + light.uniqueid.replace(/[:-]/g, '');
             if (channelNames.indexOf(channelName) !== -1) {
-                adapter.log.warn('channel "' + channelName + '" already exists, skipping lamp');
+                adapter.log.warn('skipping light "' + channelName + '" (already exists)');
                 continue;
             } else {
                 channelNames.push(channelName);
@@ -843,6 +859,18 @@ function connect(cb) {
             channelIds[channelName.replace(/\s/g, '_')] = lid;
             pollIds.push(lid);
             pollChannels.push(channelName.replace(/\s/g, '_'));
+
+            // get room assignments
+            for (var gid in groups)
+            {
+                let group = groups[gid];
+                if (group.lights.includes(lid)) {
+                    light.rooms.push(group.name);
+                }
+            }
+
+            // build common name
+            var commonName = light.rooms.length > 0 ? light.name + ' (' + light.rooms.join(", ") + ')' : light.name;
 
             if (light.type === 'Extended color light' || light.type === 'Color light') {
                 light.state.r = 0;
@@ -859,18 +887,19 @@ function connect(cb) {
                 if (!light.state.hasOwnProperty(state)) {
                     continue;
                 }
-                let objId = channelName + '.' + state;
+                let objId = (channelName + '.' + state).replace(/\s/g, '_');
 
                 let lobj = {
-                    _id:        adapter.namespace + '.' + objId.replace(/\s/g, '_'),
+                    _id:        adapter.namespace + '.' + objId,
                     type:       'state',
                     common: {
-                        name:   objId.replace(/\s/g, '_'),
+                        name:   state,
                         read:   true,
                         write:  true
                     },
                     native: {
-                        id:     lid
+                        id:     lid,
+                        rooms:  light.rooms
                     }
                 };
 
@@ -878,22 +907,26 @@ function connect(cb) {
                     case 'on':
                         lobj.common.type = 'boolean';
                         lobj.common.role = 'switch.light';
+                        lobj.common.name = 'On';
                         break;
                     case 'bri':
                         lobj.common.type = 'number';
                         lobj.common.role = 'level.dimmer';
+                        lobj.common.name = 'Brightness';
                         lobj.common.min  = 0;
                         lobj.common.max  = 254;
                         break;
                     case 'level':
                         lobj.common.type = 'number';
                         lobj.common.role = 'level.dimmer';
+                        lobj.common.name = 'Level';
                         lobj.common.min  = 0;
                         lobj.common.max  = 100;
                         break;
                     case 'hue':
                         lobj.common.type = 'number';
                         lobj.common.role = 'level.color.hue';
+                        lobj.common.name = 'Hue';
                         lobj.common.unit = '°';
                         lobj.common.min  = 0;
                         lobj.common.max  = 360;
@@ -901,16 +934,19 @@ function connect(cb) {
                     case 'sat':
                         lobj.common.type = 'number';
                         lobj.common.role = 'level.color.saturation';
+                        lobj.common.name = 'Saturation';
                         lobj.common.min  = 0;
                         lobj.common.max  = 254;
                         break;
                     case 'xy':
                         lobj.common.type = 'string';
                         lobj.common.role = 'level.color.xy';
+                        lobj.common.name = 'Color Coordinates';
                         break;
                     case 'ct':
                         lobj.common.type = 'number';
                         lobj.common.role = 'level.color.temperature';
+                        lobj.common.name = 'Color Temperature';
                         lobj.common.unit = '°K';
                         lobj.common.min  = 2200; // 500
                         lobj.common.max  = 6500; // 153
@@ -918,50 +954,60 @@ function connect(cb) {
                     case 'alert':
                         lobj.common.type = 'string';
                         lobj.common.role = 'switch';
+                        lobj.common.name = 'Alert';
                         break;
                     case 'effect':
                         lobj.common.type = 'boolean';
                         lobj.common.role = 'switch';
+                        lobj.common.name = 'Effect';
                         break;
                     case 'colormode':
                         lobj.common.type  = 'string';
                         lobj.common.role  = 'colormode';
+                        lobj.common.name = 'Color Mode';
                         lobj.common.write = false;
                         break;
                     case 'reachable':
                         lobj.common.type  = 'boolean';
                         lobj.common.write = false;
+                        lobj.common.name = 'Reachable';
                         lobj.common.role  = 'indicator.reachable';
                         break;
                     case 'r':
                         lobj.common.type = 'number';
                         lobj.common.role = 'level.color.red';
+                        lobj.common.name = 'Color Component (red)';
                         lobj.common.min  = 0;
                         lobj.common.max  = 255;
                         break;
                     case 'g':
                         lobj.common.type = 'number';
                         lobj.common.role = 'level.color.green';
+                        lobj.common.name = 'Color Component (green)';
                         lobj.common.min  = 0;
                         lobj.common.max  = 255;
                         break;
                     case 'b':
                         lobj.common.type = 'number';
                         lobj.common.role = 'level.color.blue';
+                        lobj.common.name = 'Color Component (blue)';
                         lobj.common.min  = 0;
                         lobj.common.max  = 255;
                         break;
                     case 'command':
                         lobj.common.type = 'string';
                         lobj.common.role = 'command';
+                        lobj.common.name = 'Command';
                         break;
                     case 'pending':
                         lobj.common.type = 'number';
                         lobj.common.role = 'config';
+                        lobj.common.name = 'Pending';
                         break;
                     case 'mode':
                         lobj.common.type = 'string';
                         lobj.common.role = 'text';
+                        lobj.common.name = 'Mode';
                         break;
 
                     default:
@@ -982,9 +1028,9 @@ function connect(cb) {
 
             objs.push({
                 _id: adapter.namespace + '.' + channelName.replace(/\s/g, '_'),
-                type: 'channel',
+                type: 'device',
                 common: {
-                    name:           channelName.replace(/\s/g, '_'),
+                    name:           commonName,
                     role:           role
                 },
                 native: {
@@ -993,18 +1039,18 @@ function connect(cb) {
                     name:           light.name,
                     modelid:        light.modelid,
                     swversion:      light.swversion,
-                    pointsymbol:    light.pointsymbol
+                    pointsymbol:    light.pointsymbol,
+                    rooms:          light.rooms
                 }
             });
 
         }
-        adapter.log.info('created/updated ' + count + ' light channels');
+        adapter.log.info('created/updated ' + count + ' lights');
 
         // Create/update groups
         adapter.log.info('creating/updating light groups');
 
         if (!adapter.config.ignoreGroups) {
-            let groups = config.groups;
             groups[0] = {
                 name: 'All',   //"Lightset 0"
                 type: 'LightGroup',
@@ -1029,9 +1075,9 @@ function connect(cb) {
                 count += 1;
                 let group = groups[gid];
 
-                let groupName = config.config.name + '.' + group.name;
+                let groupName = config.config.name + '.Groups.' + group.name;
                 if (channelNames.indexOf(groupName) !== -1) {
-                    adapter.log.warn('channel "' + groupName + '" already exists, skipping group');
+                    adapter.log.warn('skipping group "' + groupName + '" (already exists)');
                     continue;
                 } else {
                     channelNames.push(groupName);
@@ -1056,7 +1102,7 @@ function connect(cb) {
                         _id:        adapter.namespace + '.' + gobjId.replace(/\s/g, '_'),
                         type:       'state',
                         common: {
-                            name:   gobjId.replace(/\s/g, '_'),
+                            name:   action,
                             read:   true,
                             write:  true
                         },
@@ -1072,22 +1118,26 @@ function connect(cb) {
                         case 'on':
                             gobj.common.type = 'boolean';
                             gobj.common.role = 'switch';
+                            gobj.common.name = 'On';
                             break;
                         case 'bri':
                             gobj.common.type = 'number';
                             gobj.common.role = 'level.dimmer';
+                            gobj.common.name = 'Brightness';
                             gobj.common.min  = 0;
                             gobj.common.max  = 254;
                             break;
                         case 'level':
                             gobj.common.type = 'number';
                             gobj.common.role = 'level.dimmer';
+                            gobj.common.name = 'Level';
                             gobj.common.min  = 0;
                             gobj.common.max  = 100;
                             break;
                         case 'hue':
                             gobj.common.type = 'number';
                             gobj.common.role = 'level.color.hue';
+                            gobj.common.name = 'Hue';
                             gobj.common.unit = '°';
                             gobj.common.min  = 0;
                             gobj.common.max  = 360;
@@ -1095,16 +1145,19 @@ function connect(cb) {
                         case 'sat':
                             gobj.common.type = 'number';
                             gobj.common.role = 'level.color.saturation';
+                            gobj.common.name = 'Saturation';
                             gobj.common.min  = 0;
                             gobj.common.max  = 254;
                             break;
                         case 'xy':
                             gobj.common.type = 'string';
                             gobj.common.role = 'level.color.xy';
+                            gobj.common.name = 'Color Coordinates';
                             break;
                         case 'ct':
                             gobj.common.type = 'number';
                             gobj.common.role = 'level.color.temperature';
+                            gobj.common.name = 'Color Temperature';
                             gobj.common.unit = '°K';
                             gobj.common.min  = 2200; // 500
                             gobj.common.max  = 6500; // 153
@@ -1112,37 +1165,44 @@ function connect(cb) {
                         case 'alert':
                             gobj.common.type = 'string';
                             gobj.common.role = 'switch';
+                            gobj.common.name = 'Alert';
                             break;
                         case 'effect':
                             gobj.common.type = 'boolean';
                             gobj.common.role = 'switch';
+                            gobj.common.name = 'Effect';
                             break;
                         case 'colormode':
                             gobj.common.type = 'string';
                             gobj.common.role = 'sensor.colormode';
+                            gobj.common.name = 'Color Mode';
                             gobj.common.write = false;
                             break;
                         case 'r':
                             gobj.common.type = 'number';
                             gobj.common.role = 'level.color.red';
+                            gobj.common.name = 'Color Component (red)';
                             gobj.common.min  = 0;
                             gobj.common.max  = 255;
                             break;
                         case 'g':
                             gobj.common.type = 'number';
                             gobj.common.role = 'level.color.green';
+                            gobj.common.name = 'Color Component (green)';
                             gobj.common.min  = 0;
                             gobj.common.max  = 255;
                             break;
                         case 'b':
                             gobj.common.type = 'number';
                             gobj.common.role = 'level.color.blue';
+                            gobj.common.name = 'Color Component (blue)';
                             gobj.common.min  = 0;
                             gobj.common.max  = 255;
                             break;
                         case 'command':
                             gobj.common.type = 'string';
                             gobj.common.role = 'command';
+                            gobj.common.name = 'Command';
                             break;
                         default:
                             adapter.log.info('skip group: ' + gobjId);
@@ -1156,7 +1216,7 @@ function connect(cb) {
                     _id:        adapter.namespace + '.' + groupName.replace(/\s/g, '_'),
                     type:       'channel',
                     common: {
-                        name:   groupName.replace(/\s/g, '_'),
+                        name:   group.name,
                         role:   group.type
                     },
                     native: {
@@ -1167,7 +1227,7 @@ function connect(cb) {
                     }
                 });
             }
-            adapter.log.info('created/updated ' + count + ' light groups');
+            adapter.log.info('created/updated ' + count + ' groups');
 
         }
 
@@ -1182,7 +1242,7 @@ function connect(cb) {
             native: config.config
         });
 
-        syncObjects(objs, () => syncStates(states, false, cb))
+        syncObjects(objs, () => syncStates(states, false, cb));
     });
 }
 

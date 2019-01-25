@@ -20,6 +20,9 @@ Bindet Philips Hue / LivingColors / LivingWhites Lampen ein.
 In den Adapter-Settings muss die IP der Hue Bridge sowie ein Username konfiguriert werden.
 
 ## Changelog
+### 1.2.0 (2019.01.25)
+* (BasGo) Named lights with unique ids to allow multiple lights with same name, added folders for lights, groups and sensors
+
 ### 1.1.2 (2019.01.25)
 * (BasGo) Added compact mode
 

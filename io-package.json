@@ -1,8 +1,19 @@
 {
     "common": {
         "name": "hue",
-        "version": "1.1.2",
+        "version": "1.2.0",
         "news": {
+            "1.2.0": {
+                "en": "Named lights with unique ids to allow multiple lights with same name, added folders for lights, groups and sensors",
+                "de": "Lichtnamen mit eindeutigen IDs (um mehrere Leuchten mit demselben Namen zu ermöglichen), Ordner für Lichter, Gruppen und Sensoren hinzugefügt",
+                "ru": "именованные источники света с уникальными идентификаторами, позволяющими использовать несколько источников света с одинаковыми именами, добавлены папки для источников света, групп и датчиков.",
+                "pt": "Luzes nomeadas com ids exclusivos para permitir várias luzes com o mesmo nome, pastas adicionadas para luzes, grupos e sensores",
+                "nl": "Lampen met een naam met unieke ID's om meerdere lichten met dezelfde naam toe te staan, toegevoegde mappen voor lichten, groepen en sensoren",
+                "fr": "Lumières nommées avec des identifiants uniques pour autoriser plusieurs lumières avec le même nom, Ajout de dossiers pour les lumières, les groupes et les capteurs",
+                "it": "Luci nominate con ID univoci per consentire più luci con lo stesso nome, cartelle aggiunte per luci, gruppi e sensori",
+                "es": "Luces nombradas con identificadores únicos para permitir múltiples luces con el mismo nombre, carpetas agregadas para luces, grupos y sensores",
+                "pl": "Nazwane światła z unikatowymi identyfikatorami, pozwalającymi na wielokrotne oświetlenie o tej samej nazwie, dodawanie folderów do oświetlenia, grup i czujników"
+            },
             "1.1.2": {
                 "en": "Added compact mode",
                 "de": "Kompaktmodus hinzugefügt",
